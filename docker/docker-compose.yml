@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  claude-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: claude-api-layer
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=8000
+      - API_KEY=${API_KEY:-change-me-in-production}
+      - DEBUG=${DEBUG:-false}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-20250514}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DATABASE_URL=sqlite+aiosqlite:///./data/sessions.db
+    volumes:
+      # Persist session data
+      - claude-api-data:/app/data
+      # Mount Claude credentials from host
+      - ~/.claude:/home/appuser/.claude:ro
+      # Mount working directories (adjust as needed)
+      - ${WORKING_DIR:-./workspace}:/workspace
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Sandbox container for code execution
+  sandbox:
+    image: python:3.11-slim
+    container_name: claude-sandbox
+    profiles:
+      - sandbox
+    volumes:
+      - ${WORKING_DIR:-./workspace}:/workspace
+    working_dir: /workspace
+    # Keep container running for exec commands
+    command: ["tail", "-f", "/dev/null"]
+    mem_limit: 512m
+    cpus: 1.0
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  claude-api-data:

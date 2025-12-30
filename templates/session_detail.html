@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Session: {{ session.name or session.id[:8] }} - Claude API Layer{% endblock %}
+
+{% block content %}
+<a href="/" class="back-link">← Zurück zum Dashboard</a>
+
+<div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 30px; flex-wrap: wrap; gap: 20px;">
+    <div>
+        <h1>{{ session.name or 'Unnamed Session' }}</h1>
+        <p style="color: var(--text-secondary); margin-top: 5px;">
+            <code>{{ session.id }}</code>
+        </p>
+    </div>
+    <div>
+        <span class="badge badge-active">{{ session.status }}</span>
+    </div>
+</div>
+
+<div class="stats">
+    <div class="stat-box">
+        <div class="stat-value">{{ messages|length }}</div>
+        <div class="stat-label">Messages</div>
+    </div>
+    <div class="stat-box">
+        <div class="stat-value">{{ "{:,}".format(session.token_usage.total_tokens) }}</div>
+        <div class="stat-label">Total Tokens</div>
+    </div>
+    <div class="stat-box">
+        <div class="stat-value">{{ "{:,}".format(session.token_usage.input_tokens) }}</div>
+        <div class="stat-label">Input Tokens</div>
+    </div>
+    <div class="stat-box">
+        <div class="stat-value">{{ "{:,}".format(session.token_usage.output_tokens) }}</div>
+        <div class="stat-label">Output Tokens</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Session Details</h2>
+    <table>
+        <tr>
+            <td style="width: 200px; color: var(--text-secondary);">Working Directory</td>
+            <td><code>{{ session.working_directory }}</code></td>
+        </tr>
+        <tr>
+            <td style="color: var(--text-secondary);">Allowed Tools</td>
+            <td>
+                <div class="tools-list">
+                    {% for tool in session.allowed_tools %}
+                    <span class="tool-badge">{{ tool }}</span>
+                    {% endfor %}
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td style="color: var(--text-secondary);">Created</td>
+            <td>{{ session.created_at.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+        </tr>
+        <tr>
+            <td style="color: var(--text-secondary);">Last Activity</td>
+            <td>{{ session.last_accessed.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+        </tr>
+        <tr>
+            <td style="color: var(--text-secondary);">Cache Read Tokens</td>
+            <td>{{ "{:,}".format(session.token_usage.cache_read_tokens) }}</td>
+        </tr>
+    </table>
+</div>
+
+<div class="card">
+    <h2>Conversation History</h2>
+    {% if messages %}
+    <div style="margin-top: 15px;">
+        {% for msg in messages %}
+        <div class="message message-{{ msg.role }}">
+            <div class="message-header">
+                <span>
+                    <span class="badge badge-{{ msg.role }}">{{ msg.role|upper }}</span>
+                    {% if msg.tools_used and msg.tools_used|length > 0 and msg.tools_used[0] %}
+                    <span style="margin-left: 10px;">Tools:
+                        {% for tool in msg.tools_used %}
+                        <span class="tool-badge">{{ tool }}</span>
+                        {% endfor %}
+                    </span>
+                    {% endif %}
+                </span>
+                <span>
+                    {{ msg.created_at.strftime('%H:%M:%S') }}
+                    {% if msg.duration_ms > 0 %}
+                    <span style="margin-left: 10px;">{{ msg.duration_ms }}ms</span>
+                    {% endif %}
+                    {% if msg.output_tokens > 0 %}
+                    <span style="margin-left: 10px;">{{ msg.output_tokens }} tokens</span>
+                    {% endif %}
+                </span>
+            </div>
+            <div class="message-content">{{ msg.content }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>Noch keine Nachrichten in dieser Session.</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Continue Conversation</h2>
+    <form id="chat-form" style="display: flex; gap: 10px;">
+        <input type="text" id="prompt" placeholder="Nachricht eingeben..."
+               style="flex: 1; padding: 12px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary);">
+        <button type="submit" class="btn btn-primary">Senden</button>
+    </form>
+    <div id="response" style="margin-top: 15px; display: none;">
+        <pre id="response-content" style="background: var(--bg-primary); padding: 15px; border-radius: 5px; white-space: pre-wrap;"></pre>
+    </div>
+</div>
+
+<script>
+document.getElementById('chat-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const prompt = document.getElementById('prompt').value;
+    const responseDiv = document.getElementById('response');
+    const responseContent = document.getElementById('response-content');
+
+    if (!prompt) return;
+
+    responseDiv.style.display = 'block';
+    responseContent.textContent = 'Warte auf Antwort...';
+
+    try {
+        const res = await fetch('/api/v1/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': 'test-api-key-12345'
+            },
+            body: JSON.stringify({
+                prompt: prompt,
+                session_id: '{{ session.id }}',
+                allowed_tools: {{ session.allowed_tools | tojson }}
+            })
+        });
+
+        const data = await res.json();
+        responseContent.textContent = data.result || JSON.stringify(data, null, 2);
+
+        // Reload page to show new message
+        setTimeout(() => location.reload(), 1500);
+    } catch (err) {
+        responseContent.textContent = 'Fehler: ' + err.message;
+    }
+});
+</script>
+{% endblock %}

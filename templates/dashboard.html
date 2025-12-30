@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Claude API Layer{% endblock %}
+
+{% block content %}
+<h1 style="margin-bottom: 30px;">Dashboard</h1>
+
+<div class="stats">
+    <div class="stat-box">
+        <div class="stat-value">{{ sessions|length }}</div>
+        <div class="stat-label">Sessions</div>
+    </div>
+    <div class="stat-box">
+        <div class="stat-value">{{ total_messages }}</div>
+        <div class="stat-label">Messages</div>
+    </div>
+    <div class="stat-box">
+        <div class="stat-value">{{ "{:,.0f}".format(total_tokens) }}</div>
+        <div class="stat-label">Total Tokens</div>
+    </div>
+    <div class="stat-box">
+        <div class="stat-value">{{ active_sessions }}</div>
+        <div class="stat-label">Active</div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>Sessions</h2>
+    {% if sessions %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name / ID</th>
+                <th>Status</th>
+                <th>Messages</th>
+                <th>Tokens</th>
+                <th>Created</th>
+                <th>Last Activity</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for session in sessions %}
+            <tr>
+                <td>
+                    <strong>{{ session.name or 'Unnamed' }}</strong><br>
+                    <small style="color: var(--text-secondary)">{{ session.id[:8] }}...</small>
+                </td>
+                <td>
+                    <span class="badge badge-active">{{ session.status }}</span>
+                </td>
+                <td>{{ session.message_count }}</td>
+                <td>{{ "{:,}".format(session.total_tokens) }}</td>
+                <td>{{ session.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                <td>{{ session.last_accessed.strftime('%d.%m.%Y %H:%M') }}</td>
+                <td>
+                    <a href="/sessions/{{ session.id }}" class="btn btn-primary">Details</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">
+        <p>Noch keine Sessions vorhanden.</p>
+        <p style="margin-top: 10px;">Erstelle eine Session über die API:</p>
+        <code style="display: block; margin-top: 10px; padding: 15px; background: var(--bg-primary); border-radius: 5px;">
+            curl -X POST http://localhost:8000/api/v1/sessions \<br>
+            &nbsp;&nbsp;-H "X-API-Key: test-api-key-12345" \<br>
+            &nbsp;&nbsp;-H "Content-Type: application/json" \<br>
+            &nbsp;&nbsp;-d '{"name": "meine-session"}'
+        </code>
+    </div>
+    {% endif %}
+</div>
+
+<div class="card">
+    <h2>Quick Test</h2>
+    <form id="test-form" style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <input type="text" id="prompt" placeholder="Nachricht eingeben..."
+               style="flex: 1; min-width: 300px; padding: 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary);">
+        <select id="session-select" style="padding: 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-primary); color: var(--text-primary);">
+            <option value="">Neue Session</option>
+            {% for session in sessions %}
+            <option value="{{ session.id }}">{{ session.name or session.id[:8] }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary">Senden</button>
+    </form>
+    <div id="response" style="margin-top: 15px; display: none;">
+        <h3 style="font-size: 1rem; margin-bottom: 10px;">Antwort:</h3>
+        <pre id="response-content" style="background: var(--bg-primary); padding: 15px; border-radius: 5px; white-space: pre-wrap; max-height: 300px; overflow-y: auto;"></pre>
+    </div>
+</div>
+
+<script>
+document.getElementById('test-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const prompt = document.getElementById('prompt').value;
+    const sessionId = document.getElementById('session-select').value;
+    const responseDiv = document.getElementById('response');
+    const responseContent = document.getElementById('response-content');
+
+    if (!prompt) return;
+
+    responseDiv.style.display = 'block';
+    responseContent.textContent = 'Warte auf Antwort...';
+
+    try {
+        const body = {
+            prompt: prompt,
+            allowed_tools: []
+        };
+        if (sessionId) {
+            body.session_id = sessionId;
+        }
+
+        const res = await fetch('/api/v1/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': 'test-api-key-12345'
+            },
+            body: JSON.stringify(body)
+        });
+
+        const data = await res.json();
+        responseContent.textContent = data.result || JSON.stringify(data, null, 2);
+
+        // Reload page to show updated sessions
+        setTimeout(() => location.reload(), 2000);
+    } catch (err) {
+        responseContent.textContent = 'Fehler: ' + err.message;
+    }
+});
+</script>
+{% endblock %}
